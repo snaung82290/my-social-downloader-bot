@@ -37,47 +37,75 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     url = message.text
-    if "http" in url:
-        msg = bot.reply_to(message, "⏳ အချက်အလက်များကို စစ်ဆေးနေသည်...")
+    
+    # TikTok, Pinterest သို့မဟုတ် Rednote link ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+    if any(domain in url for domain in ["tiktok.com", "pinterest.com", "pin.it", "xiaohongshu.com", "rednote.com", "xhslink.com"]):
+        msg = bot.reply_to(message, "⏳ Link ကို စစ်ဆေးနေပါတယ်...")
+        
         api_url = "https://universal-social-media-downloader-api.p.rapidapi.com/parse"
         headers = {
             "content-type": "application/json",
             "x-rapidapi-key": RAPIDAPI_KEY,
             "x-rapidapi-host": RAPIDAPI_HOST
         }
+
         try:
             response = requests.post(api_url, json={"url": url}, headers=headers)
             result = response.json()
+
             if result.get('success') and 'data' in result:
+                # Video link တွေအပြင် ပုံ (Images) တွေကိုပါ download ဆွဲနိုင်အောင် logic ထပ်ဖြည့်ထားပါတယ်
                 medias = result['data'].get('medias', [])
                 markup = types.InlineKeyboardMarkup()
                 valid_links = {}
+
                 for index, item in enumerate(medias):
-                    if item.get('format') == 'mp4':
-                        quality = item.get('quality', 'Normal')
-                        label = f"Video - {quality}"
-                        callback_val = f"dl_{index}_{message.chat.id}"
-                        markup.add(types.InlineKeyboardButton(text=label, callback_data=callback_val))
-                        valid_links[index] = item.get('url')
+                    # Video ရော Image ရော link အကုန်ထုတ်ပေးမယ်
+                    format_type = item.get('format', 'media').upper()
+                    quality = item.get('quality', 'Standard')
+                    label = f"{format_type} - {quality}"
+                    
+                    callback_val = f"dl_{index}_{message.chat.id}"
+                    markup.add(types.InlineKeyboardButton(text=label, callback_data=callback_val))
+                    valid_links[index] = {
+                        "url": item.get('url'),
+                        "type": item.get('format')
+                    }
+
                 user_data[message.chat.id] = valid_links
+
                 if valid_links:
-                    bot.edit_message_text("Video Quality ရွေးချယ်ပါ -", message.chat.id, msg.message_id, reply_markup=markup)
+                    bot.edit_message_text("ရရှိနိုင်သော Media များ -", message.chat.id, msg.message_id, reply_markup=markup)
                 else:
-                    bot.edit_message_text("❌ Download link များ ရှာမတွေ့ပါ။", message.chat.id, msg.message_id)
+                    bot.edit_message_text("❌ Media link များ ရှာမတွေ့ပါ။", message.chat.id, msg.message_id)
             else:
                 bot.edit_message_text("❌ API မှ အချက်အလက် မရရှိနိုင်ပါ။", message.chat.id, msg.message_id)
+
         except Exception as e:
             bot.edit_message_text(f"❌ Error: {str(e)}", message.chat.id, msg.message_id)
+    else:
+        bot.reply_to(message, "TikTok, Pinterest သို့မဟုတ် Rednote link ပို့ပေးပါ။")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dl_'))
 def callback_download(call):
     _, index, chat_id = call.data.split('_')
     index = int(index)
     chat_id = int(chat_id)
+
     if chat_id in user_data and index in user_data[chat_id]:
-        video_url = user_data[chat_id][index]
-        bot.answer_callback_query(call.id, "ဗီဒီယို ပို့ပေးနေပြီ...")
-        bot.send_video(chat_id, video_url, caption="ရပါပြီခင်ဗျာ! ✅")
+        media_info = user_data[chat_id][index]
+        media_url = media_info["url"]
+        media_type = media_info["type"]
+
+        bot.answer_callback_query(call.id, "ပို့ပေးနေပြီ...")
+        
+        try:
+            if media_type == 'mp4':
+                bot.send_video(chat_id, media_url, caption="Done! ✅")
+            else:
+                bot.send_photo(chat_id, media_url, caption="Done! ✅")
+        except Exception as e:
+            bot.send_message(chat_id, f"❌ ပို့လို့မရပါ: {str(e)}")
     else:
         bot.answer_callback_query(call.id, "Error: Link သက်တမ်းကုန်သွားပါပြီ။", show_alert=True)
 
