@@ -1,7 +1,6 @@
 import telebot
 import requests
 import os
-import yt_dlp
 from flask import Flask
 from threading import Thread
 from telebot import types
