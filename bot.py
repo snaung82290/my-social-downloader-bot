@@ -38,6 +38,13 @@ def send_welcome(message):
 def handle_message(message):
     url = message.text
     
+    # Pinterest link အတိုကို အရှည်ပြောင်းပေးခြင်း
+    if "pin.it" in url:
+        try:
+            res = requests.get(url, allow_redirects=True)
+            url = res.url # Link အရှည်ကို ပြန်ယူလိုက်တာပါ
+        except:
+            pass
     # TikTok, Pinterest သို့မဟုတ် Rednote link ဟုတ်မဟုတ် စစ်ဆေးခြင်း
     if any(domain in url for domain in ["tiktok.com", "pinterest.com", "pin.it", "xiaohongshu.com", "rednote.com", "xhslink.com"]):
         msg = bot.reply_to(message, "⏳ Link ကို စစ်ဆေးနေပါတယ်...")
