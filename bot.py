@@ -40,23 +40,36 @@ def send_welcome(message):
 def handle_message(message):
     url = message.text
     
-    # YouTube Logic
+  # --- YouTube Logic (API သုံးထားသည်) ---
     if "youtube.com" in url or "youtu.be" in url:
         msg = bot.reply_to(message, "⏳ YouTube Video ကို စစ်ဆေးနေပါတယ်...")
+        
+        # YouTube API အသစ်၏ Host (DataFanatic API ဖြစ်လျှင်)
+        YT_HOST = "youtube-media-downloader.p.rapidapi.com" 
+        api_url = f"https://{YT_HOST}/v2/video/details" # Endpoint ကို API dashboard မှာ ပြန်စစ်ပါ
+        
+        headers = {
+            "x-rapidapi-key": RAPIDAPI_KEY,
+            "x-rapidapi-host": YT_HOST
+        }
+        params = {"url": url}
+
         try:
-            ydl_opts = {'format': 'best', 'quiet': True}
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                video_url = info.get('url')
-                title = info.get('title', 'YouTube Video')
+            response = requests.get(api_url, headers=headers, params=params)
+            result = response.json()
+            
+            # API မှ ပြန်ပေးသော data ထဲမှ video link ကို ယူခြင်း
+            # မှတ်ချက် - API dashboard ရှိ 'Example Response' ကိုကြည့်ပြီး structure ညှိရပါမည်
+            video_url = result.get('videos', {}).get('items', [{}])[0].get('url')
+            title = result.get('title', 'YouTube Video')
+
             if video_url:
                 bot.send_video(message.chat.id, video_url, caption=f"{title} ✅")
                 bot.delete_message(message.chat.id, msg.message_id)
             else:
-                bot.edit_message_text("❌ YouTube Link ရှာမတွေ့ပါ။", message.chat.id, msg.message_id)
+                bot.edit_message_text("❌ YouTube Video Link ရှာမတွေ့ပါ။", message.chat.id, msg.message_id)
         except Exception as e:
-            bot.edit_message_text(f"❌ YouTube Error: {str(e)}", message.chat.id, msg.message_id)
-
+            bot.edit_message_text(f"❌ YouTube API Error: {str(e)}", message.chat.id, msg.message_id)
     # Pinterest Logic
     elif "pinterest.com" in url or "pin.it" in url:
         msg = bot.reply_to(message, "⏳ Pinterest Media ကို ရှာဖွေနေပါတယ်...")
