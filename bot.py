@@ -1,6 +1,7 @@
 import telebot
 import requests
 import os
+import yt_dlp
 from flask import Flask
 from threading import Thread
 from telebot import types
@@ -68,6 +69,25 @@ def handle_message(message):
                 bot.edit_message_text("❌ Pinterest Media ရှာမတွေ့ပါ။ API Dashboard မှာ test လုပ်ကြည့်ပါ။", message.chat.id, msg.message_id)
         except Exception as e:
             bot.edit_message_text(f"❌ Pinterest Error: {str(e)}", message.chat.id, msg.message_id)
+
+    elif "youtube.com" in url or "youtu.be" in url:
+    msg = bot.reply_to(message, "⏳ YouTube Video ကို စစ်ဆေးနေပါတယ်...")
+    try:
+        ydl_opts = {
+            'format': 'best',
+            'quiet': True,
+            'no_warnings': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_url = info.get('url')
+            title = info.get('title', 'Video')
+
+        if video_url:
+            bot.send_video(message.chat.id, video_url, caption=f"{title}\n\nDone! ✅")
+            bot.delete_message(message.chat.id, msg.message_id)
+    except Exception as e:
+        bot.edit_message_text(f"❌ YouTube Error: {str(e)}", message.chat.id, msg.message_id)
 
     # ၂။ TikTok သို့မဟုတ် Rednote ဖြစ်ခဲ့လျှင်
     elif any(domain in url for domain in ["tiktok.com", "rednote.com", "xhslink.com"]):
