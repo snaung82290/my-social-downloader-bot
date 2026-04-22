@@ -1,6 +1,7 @@
 import telebot
 import requests
 import os
+import re
 from flask import Flask
 from threading import Thread
 from telebot import types
@@ -10,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is alive!"
+    return "Bot is alive and serving multiple users!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -26,103 +27,127 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 RAPIDAPI_KEY = "81af0e4596msh99a544721cd6043p12ea14jsn9e95af1e2351"
 UNIVERSAL_HOST = "universal-social-media-downloader-api.p.rapidapi.com"
-PINTEREST_HOST = "pinterest-video-and-image-downloader.p.rapidapi.com" 
+PINTEREST_HOST = "pinterest-video-and-image-downloader.p.rapidapi.com"
+YT_HOST = "youtube-media-downloader.p.rapidapi.com"
 
-user_data = {}
+# User အသီးသီးရဲ့ Data တွေကို သိမ်းဖို့ Dictionary (Memory)
+user_data_storage = {}
+
+def get_url(text):
+    """စာသားထဲကနေ URL သီးသန့်ကို ဆွဲထုတ်ပေးတဲ့ function"""
+    urls = re.findall(r'(https?://\S+)', text)
+    return urls[0] if urls else None
 
 # --- ၃။ Bot Logic ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "TikTok, Pinterest, YouTube သို့မဟုတ် Rednote link ပို့ပေးပါ။ ✨")
+    bot.reply_to(message, "မင်္ဂလာပါ! TikTok, IG, Pinterest, YouTube, Rednote လင့်များ ပို့နိုင်ပါပြီ။ ✨")
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    url = message.text
-    
-  # --- YouTube Logic (API သုံးထားသည်) ---
-    if "youtube.com" in url or "youtu.be" in url:
-        msg = bot.reply_to(message, "⏳ YouTube Video ကို စစ်ဆေးနေပါတယ်...")
-        
-        # YouTube API အသစ်၏ Host (DataFanatic API ဖြစ်လျှင်)
-        YT_HOST = "youtube-media-downloader.p.rapidapi.com" 
-        api_url = f"https://{YT_HOST}/v2/video/details" # Endpoint ကို API dashboard မှာ ပြန်စစ်ပါ
-        
-        headers = {
-            "x-rapidapi-key": RAPIDAPI_KEY,
-            "x-rapidapi-host": YT_HOST
-        }
-        params = {"url": url}
+    raw_text = message.text
+    url = get_url(raw_text)
+    chat_id = message.chat.id
 
-        try:
-            response = requests.get(api_url, headers=headers, params=params)
-            result = response.json()
-            
-            # API မှ ပြန်ပေးသော data ထဲမှ video link ကို ယူခြင်း
-            # မှတ်ချက် - API dashboard ရှိ 'Example Response' ကိုကြည့်ပြီး structure ညှိရပါမည်
-            video_url = result.get('videos', {}).get('items', [{}])[0].get('url')
-            title = result.get('title', 'YouTube Video')
+    if not url:
+        bot.reply_to(message, "ကျေးဇူးပြု၍ Link တစ်ခု ပို့ပေးပါခင်ဗျာ။")
+        return
 
-            if video_url:
-                bot.send_video(message.chat.id, video_url, caption=f"{title} ✅")
-                bot.delete_message(message.chat.id, msg.message_id)
-            else:
-                bot.edit_message_text("❌ YouTube Video Link ရှာမတွေ့ပါ။", message.chat.id, msg.message_id)
-        except Exception as e:
-            bot.edit_message_text(f"❌ YouTube API Error: {str(e)}", message.chat.id, msg.message_id)
-    # Pinterest Logic
-    elif "pinterest.com" in url or "pin.it" in url:
-        msg = bot.reply_to(message, "⏳ Pinterest Media ကို ရှာဖွေနေပါတယ်...")
-        api_url = f"https://{PINTEREST_HOST}/pinterest"
-        try:
-            response = requests.get(api_url, headers={"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": PINTEREST_HOST}, params={"url": url})
-            result = response.json()
-            video_url = result.get('url') or result.get('data', {}).get('url')
-            if video_url:
-                if ".mp4" in video_url:
-                    bot.send_video(message.chat.id, video_url, caption="Pinterest Video ✅")
-                else:
-                    bot.send_photo(message.chat.id, video_url, caption="Pinterest Image ✅")
-                bot.delete_message(message.chat.id, msg.message_id)
-            else:
-                bot.edit_message_text("❌ Pinterest Media ရှာမတွေ့ပါ။", message.chat.id, msg.message_id)
-        except Exception as e:
-            bot.edit_message_text(f"❌ Pinterest Error: {str(e)}", message.chat.id, msg.message_id)
-
-    # TikTok/Rednote Logic
-    elif any(domain in url for domain in ["tiktok.com", "rednote.com", "xhslink.com"]):
-        msg = bot.reply_to(message, "⏳ Link ကို စစ်ဆေးနေပါတယ်...")
+    # ၁။ Instagram Logic
+    if "instagram.com" in url:
+        msg = bot.reply_to(message, "⏳ Instagram Media ကို စစ်ဆေးနေပါတယ်...")
         try:
             response = requests.post(f"https://{UNIVERSAL_HOST}/parse", json={"url": url}, headers={"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": UNIVERSAL_HOST, "content-type": "application/json"})
             result = response.json()
-            if result.get('success') and 'data' in result:
+            if result.get('success'):
                 medias = result['data'].get('medias', [])
                 markup = types.InlineKeyboardMarkup()
                 valid_links = {}
                 for index, item in enumerate(medias):
-                    label = f"{item.get('format', 'media').upper()} - {item.get('quality', 'HD')}"
-                    markup.add(types.InlineKeyboardButton(text=label, callback_data=f"dl_{index}_{message.chat.id}"))
+                    markup.add(types.InlineKeyboardButton(text=f"Download {item.get('quality', 'HD')}", callback_data=f"dl_{index}_{chat_id}"))
                     valid_links[index] = {"url": item.get('url'), "type": item.get('format')}
-                user_data[message.chat.id] = valid_links
-                bot.edit_message_text("Media Quality ရွေးချယ်ပါ -", message.chat.id, msg.message_id, reply_markup=markup)
+                user_data_storage[chat_id] = valid_links
+                bot.edit_message_text("Instagram Media ရွေးချယ်ပါ -", chat_id, msg.message_id, reply_markup=markup)
             else:
-                bot.edit_message_text("❌ အချက်အလက် မရရှိနိုင်ပါ။", message.chat.id, msg.message_id)
+                bot.edit_message_text("❌ Media ရှာမတွေ့ပါ။", chat_id, msg.message_id)
         except Exception as e:
-            bot.edit_message_text(f"❌ Error: {str(e)}", message.chat.id, msg.message_id)
+            bot.edit_message_text(f"❌ Error: {str(e)}", chat_id, msg.message_id)
+
+    # ၂။ YouTube Logic
+    elif "youtube.com" in url or "youtu.be" in url:
+        msg = bot.reply_to(message, "⏳ YouTube Video ရှာနေပါတယ်...")
+        try:
+            response = requests.get(f"https://{YT_HOST}/v2/video/details", headers={"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": YT_HOST}, params={"url": url})
+            result = response.json()
+            video_url = result.get('videos', {}).get('items', [{}])[0].get('url')
+            if video_url:
+                bot.send_video(chat_id, video_url, caption="YouTube ✅")
+                bot.delete_message(chat_id, msg.message_id)
+            else:
+                bot.edit_message_text("❌ YouTube Link ရှာမတွေ့ပါ။", chat_id, msg.message_id)
+        except:
+            bot.edit_message_text("❌ YouTube API Error!", chat_id, msg.message_id)
+
+    # ၃။ Pinterest Logic
+    elif "pinterest.com" in url or "pin.it" in url:
+        msg = bot.reply_to(message, "⏳ Pinterest Media ရှာနေပါတယ်...")
+        try:
+            response = requests.get(f"https://{PINTEREST_HOST}/pinterest", headers={"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": PINTEREST_HOST}, params={"url": url})
+            result = response.json()
+            video_url = result.get('url') or result.get('data', {}).get('url')
+            if video_url:
+                if ".mp4" in video_url:
+                    bot.send_video(chat_id, video_url, caption="Pinterest Video ✅")
+                else:
+                    bot.send_photo(chat_id, video_url, caption="Pinterest Image ✅")
+                bot.delete_message(chat_id, msg.message_id)
+            else:
+                bot.edit_message_text("❌ Pinterest ရှာမတွေ့ပါ။", chat_id, msg.message_id)
+        except:
+            bot.edit_message_text("❌ Pinterest Error!", chat_id, msg.message_id)
+
+    # ၄။ TikTok/Rednote Logic
+    elif any(domain in url for domain in ["tiktok.com", "rednote.com", "xhslink.com", "xiaohongshu.com"]):
+        msg = bot.reply_to(message, "⏳ Processing TikTok/Rednote...")
+        try:
+            response = requests.post(f"https://{UNIVERSAL_HOST}/parse", json={"url": url}, headers={"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": UNIVERSAL_HOST, "content-type": "application/json"})
+            result = response.json()
+            if result.get('success'):
+                medias = result['data'].get('medias', [])
+                markup = types.InlineKeyboardMarkup()
+                valid_links = {}
+                for index, item in enumerate(medias):
+                    markup.add(types.InlineKeyboardButton(text=f"Download {item.get('quality', 'HD')}", callback_data=f"dl_{index}_{chat_id}"))
+                    valid_links[index] = {"url": item.get('url'), "type": item.get('format')}
+                user_data_storage[chat_id] = valid_links
+                bot.edit_message_text("Quality ရွေးချယ်ပါ -", chat_id, msg.message_id, reply_markup=markup)
+            else:
+                bot.edit_message_text("❌ API Error!", chat_id, msg.message_id)
+        except:
+            bot.edit_message_text("❌ Connection Error!", chat_id, msg.message_id)
+    
+    else:
+        bot.reply_to(message, "ဒီ Link ကို Bot က နားမလည်ပါဘူး။ (TikTok, IG, Pinterest, YouTube) ပဲ ပို့ပေးပါ။")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dl_'))
 def callback_download(call):
     try:
-        _, index, chat_id = call.data.split('_')
-        index, chat_id = int(index), int(chat_id)
-        if chat_id in user_data and index in user_data[chat_id]:
-            media = user_data[chat_id][index]
+        # callback_data: dl_{index}_{chat_id}
+        data_parts = call.data.split('_')
+        index = int(data_parts[1])
+        chat_id = int(data_parts[2])
+
+        if chat_id in user_data_storage and index in user_data_storage[chat_id]:
+            media = user_data_storage[chat_id][index]
             bot.answer_callback_query(call.id, "ပို့ပေးနေပြီ...")
             if media["type"] == 'mp4':
                 bot.send_video(chat_id, media["url"], caption="Done! ✅")
             else:
                 bot.send_photo(chat_id, media["url"], caption="Done! ✅")
-    except:
-        bot.answer_callback_query(call.id, "Link သက်တမ်းကုန်သွားပါပြီ။", show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, "Error: Link Expired! ကျေးဇူးပြု၍ လင့်ပြန်ပို့ပါ။", show_alert=True)
+    except Exception as e:
+        print(f"Callback Error: {e}")
 
 if __name__ == "__main__":
     keep_alive()
